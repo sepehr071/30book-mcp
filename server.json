@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.sepehr071/30book-mcp",
   "title": "30book",
-  "description": "Unofficial read-only 30book: search Iranian printed books, compare editions, prices in Toman, authors, publishers.",
+  "description": "Unofficial read-only 30book: search Iranian printed books, compare editions and prices.",
   "repository": {
     "url": "https://github.com/sepehr071/30book-mcp",
     "source": "github"
