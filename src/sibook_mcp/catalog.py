@@ -16,11 +16,9 @@ PER_PAGE = 20  # fixed by the site
 SORTS = {"views": 1, "bestselling": 2, "favorite": 3, "cheapest": 4, "expensive": 5, "newest": 6, "discount": 7}
 Sort = Annotated[
     Literal["views", "bestselling", "favorite", "cheapest", "expensive", "newest", "discount"] | None,
-    Field(
-        description="Order. Omit for the page's own default (bestselling; newest on author pages). 'cheapest' / 'expensive' follow the list price."
-    ),
+    Field(description="Order; omit for the page default. cheapest / expensive follow list price."),
 ]
-Page = Annotated[int, Field(ge=1, le=500, description="Page number from 1 (20 books per page).")]
+Page = Annotated[int, Field(ge=1, le=500, description="Page from 1.")]
 Avail = Annotated[bool, Field(description="Only books that are in stock.")]
 
 
@@ -65,9 +63,7 @@ async def sb_search(
     query: Annotated[
         str, Field(min_length=1, max_length=100, description="Title words, Persian, e.g. 'شازده کوچولو'.")
     ],
-    extended: Annotated[
-        bool, Field(description="Word-by-word match instead of the exact title phrase (more results).")
-    ] = False,
+    extended: Annotated[bool, Field(description="Match words, not the exact phrase (more results).")] = False,
     sort: Sort = None,
     available_only: Avail = False,
     publisher_id: Annotated[
@@ -79,14 +75,12 @@ async def sb_search(
     translator_id: Annotated[int | None, Field(ge=1, description="Only this translator (person id).")] = None,
     page: Page = 1,
 ) -> dict[str, Any]:
-    """Search 30book (about 200,000 printed books) by title. Each book has price (list), final_price (what you pay),
-    discount_pct, in_stock, publisher, id; prices are Toman.
+    """Search books by title: price, final_price, discount_pct, in_stock, publisher, id.
 
-    Use first for any book question. Many editions of one title come back as separate books from different
-    publishers: compare final_price. Then call sb_book(id) for author, pages, ISBN, edition. Page on with `page`.
+    Use first for any book question. Editions of one title are separate books: compare final_price. Next: sb_book(id).
     """
     params = _filters(sort, available_only, publisher_id, wtr=author_id, inp=translator_id, stp=extended)
-    return await listing(f"/search/{query}", params, page)
+    return await listing(f"/search/{parse.seg(query)}", params, page)
 
 
 _CODE = r"^bt[saf]-\d+(-\d+){0,2}$"
@@ -100,7 +94,7 @@ async def sb_browse(
         Field(
             min_length=1,
             max_length=100,
-            description="category: code like 'bta-1-1' (from sb_book categories or sb_categories); genre / nation / award: numeric id from sb_collections; tag: the tag text, e.g. 'کتاب_های_پرفروش_1404'.",
+            description="category: code like 'bta-1-1' (sb_categories, sb_book); genre / nation / award: id from sb_collections; tag: text, e.g. 'کتاب_های_پرفروش_1404'.",
         ),
     ],
     sort: Sort = None,
@@ -108,10 +102,9 @@ async def sb_browse(
     publisher_id: Annotated[int | None, Field(ge=1, description="Only this publisher.")] = None,
     page: Page = 1,
 ) -> dict[str, Any]:
-    """List the books of a category (subject bta-N-M or topic btf-N-M-K; sections bts-N are only landing pages), a fiction genre, a national
-    literature, a literary award list (Nobel, Booker, ...) or a tag, with sort / stock / publisher filters.
+    """Books of a category (bta-N-M or btf-N-M-K; bts-N sections are landing pages only), genre, nation, award list or tag.
 
-    Use to browse a topic instead of a keyword. Award pages page with `page` but mix in extra carousel books (about 22 per page) and ignore sort / filters.
+    Use to browse a topic instead of a keyword. Award pages ignore sort / filters and add carousel books (about 22 per page).
     """
     loose = False
     if kind == "category":
@@ -130,7 +123,7 @@ async def sb_browse(
     elif kind == "award" and key.isdigit():
         path, loose = f"/experts-choice/brw-{key}/x", True
     elif kind == "tag":
-        path = f"/tag/{key}"
+        path = f"/tag/{parse.seg(key)}"
     else:
         raise ValueError(f"key for {kind} must be a number" if kind != "tag" else "bad tag")
     return await listing(path, _filters(sort, available_only, publisher_id), page, loose=loose)
@@ -148,9 +141,7 @@ async def sb_publisher(
     available_only: Avail = False,
     page: Page = 1,
 ) -> dict[str, Any]:
-    """One publisher's books with a short description of the publisher. Use to see a publisher's catalogue, best
-    sellers (sort='bestselling') or cheapest titles (sort='cheapest').
-    """
+    """One publisher's books plus a short about text. Try sort='bestselling' or 'cheapest'."""
     return await listing(f"/publisher/bps-1-{publisher_id}/x", _filters(sort, available_only), page)
 
 
@@ -166,7 +157,7 @@ async def sb_author(
     available_only: Avail = False,
     page: Page = 1,
 ) -> dict[str, Any]:
-    """Everything by one author or translator (title shows the Persian and Latin name). Default order: newest."""
+    """Books by one author or translator (default newest first)."""
     return await listing(f"/person/bws-{person_id}/x", _filters(sort, available_only), page)
 
 
@@ -175,7 +166,7 @@ async def sb_bestsellers(
     available_only: Avail = False,
     page: Page = 1,
 ) -> dict[str, Any]:
-    """The site-wide best-selling books right now (10 pages of 20). Use for 'what is popular'."""
+    """Site-wide best sellers (10 pages)."""
     return await listing("/best-sellers", _filters(None, available_only), page)
 
 
@@ -184,7 +175,7 @@ async def sb_new_releases(
     available_only: Avail = False,
     page: Page = 1,
 ) -> dict[str, Any]:
-    """The newest books added to the store (10 pages of 20)."""
+    """Newest books (10 pages)."""
     return await listing("/new-releases", _filters(None, available_only), page)
 
 
@@ -194,17 +185,13 @@ async def sb_deals(
         str | None,
         Field(
             pattern=r"^bta-\d+-\d+$",
-            description="Subject code such as 'bta-1-1' (history) to look inside one subject. Omit for the whole best-seller list.",
+            description="Subject code such as 'bta-1-1'; omit for all best sellers.",
         ),
     ] = None,
     available_only: Avail = True,
     page: Page = 1,
 ) -> dict[str, Any]:
-    """Books with the biggest discount first: among the best sellers, or inside one subject. (The site's own
-    'amazing discounts' page is mostly stationery and DVDs, so it is not used.)
-
-    Use for 'what is on sale'. Compare discount_pct and final_price; some publishers show inflated list prices.
-    """
+    """Best sellers (or one subject) by biggest discount. Some publishers inflate list prices: compare final_price."""
     path = f"/category/{subject}/x/x" if subject else "/best-sellers"
     return await listing(path, _filters("discount", available_only), page)
 

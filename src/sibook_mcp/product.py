@@ -14,8 +14,11 @@ from .registry import tool
 
 BookId = Annotated[
     int,
-    Field(ge=1, le=9_999_999, description="Book id from sb_search / listings (the number in /book/<id>), e.g. 167515."),
+    Field(ge=1, le=9_999_999, description="Book id from sb_search / listings, e.g. 167515."),
 ]
+
+
+REVIEW_CHARS = 400  # review text is untrusted and unbounded
 
 
 def _clip(text: str | None, n: int) -> str | None:
@@ -31,30 +34,29 @@ async def _page(book_id: int) -> Node:
 @tool("Book details")
 async def sb_book(
     book_id: BookId,
-    max_chars: Annotated[
-        int, Field(ge=0, le=20000, description="Cut the description after this many characters (0 = no cut).")
-    ] = 1500,
+    max_chars: Annotated[int, Field(ge=0, le=20000, description="Cut the description here (0 = no cut).")] = 600,
+    include_blurb: Annotated[bool, Field(description="Also return review_text (blurb) and stats.")] = False,
 ) -> dict[str, Any]:
-    """Full details of one book: title, authors, translators, publisher, price (list) and final_price in Toman,
-    discount_pct, in_stock, ISBN, pages, cover type (جلد), size (قطع), language, edition (نوبت چاپ), year (Shamsi),
-    weight, category chain (codes for sb_browse), rating, tags, description.
+    """One book: authors, translators, publisher, price, final_price, discount_pct, in_stock, ISBN, pages, cover, size,
+    language, edition, year (Shamsi), weight, categories (codes for sb_browse), rating, tags, description (cut to
+    max_chars, default 600; 0 = no cut). review_text and stats only with include_blurb=true.
 
-    Use after sb_search to compare editions (same title, different publisher / print run / cover) and to get
-    author / publisher ids. A sold-out book (in_stock=false) shows its last price. Next: sb_similar, sb_reviews.
+    Use after sb_search to compare editions and get author / publisher ids. Next: sb_similar, sb_reviews.
     """
     b = parse.book(await _page(book_id), book_id)
+    if not include_blurb:
+        b.pop("review_text", None)  # marketing blurb that repeats the description
+        b.pop("stats", None)
     if max_chars:
         b["description"] = _clip(b["description"], max_chars)
-        b["review_text"] = _clip(b["review_text"], max_chars)
     return b
 
 
 @tool("Similar books and more by the author")
 async def sb_similar(book_id: BookId) -> dict[str, Any]:
-    """The lists on a book's page: similar books from the same topic, more by the same author and, for translations,
-    more by the same translator. Each list has up to 20 books with prices in Toman.
+    """Similar books, more by the author and (translations) by the translator, up to 20 each.
 
-    Use for alternatives and 'what else by this author'; for other editions of the same title use sb_search.
+    For other editions of the same title use sb_search.
     """
     lists = parse.book_lists(await _page(book_id))
     names = {"شاید بپسندید": "similar", "از این نویسنده": "same_author", "از این مترجم": "same_translator"}
@@ -62,9 +64,12 @@ async def sb_similar(book_id: BookId) -> dict[str, Any]:
 
 
 @tool("Reader reviews of a book")
-async def sb_reviews(book_id: BookId) -> dict[str, Any]:
-    """Reader comments on a book (name, Shamsi date, 1-5 stars, text, likes) plus the rating summary. Only the
-    first comments the page shows are available. Use to judge quality before buying.
+async def sb_reviews(
+    book_id: BookId,
+    full_text: Annotated[bool, Field(description="Return whole review texts instead of 400 chars.")] = False,
+) -> dict[str, Any]:
+    """Reader comments (author, date, stars, text cut to 400 chars unless full_text, likes) and the rating summary;
+    only the first comments on the page are available.
     """
     root = await _page(book_id)
     b = parse.book(root, book_id)
@@ -73,7 +78,9 @@ async def sb_reviews(book_id: BookId) -> dict[str, Any]:
         "rating": b["rating"],
         "rating_count": b["rating_count"],
         "review_count": b["review_count"],
-        "reviews": parse.reviews(root),
+        "reviews": [
+            {**r, "text": r["text"] if full_text else _clip(r["text"], REVIEW_CHARS)} for r in parse.reviews(root)
+        ],
     }
 
 
@@ -83,9 +90,8 @@ async def sb_categories(
         str | None, Field(pattern=r"^bts-\d+$", description="Section code such as 'bts-1'. Omit to list the sections.")
     ] = None,
 ) -> dict[str, Any]:
-    """The top of the category tree: sections (کتاب عمومی, کتاب کودک و نوجوان, ...) and, for one section, its
-    subjects (تاریخ, ادبیات, ...). Codes go to sb_browse(kind='category'). Finer topics (btf-...) appear in the
-    categories of sb_book.
+    """Category sections (کتاب عمومی, ...) or, for one section, its subjects (تاریخ, ...). Codes go to
+    sb_browse(kind='category'); finer btf-... topics are in sb_book categories.
     """
     if section is None:
         root = parse_html(await http.html("/"))
@@ -111,9 +117,7 @@ async def sb_categories(
 
 @tool("Genres, nations, awards and tags")
 async def sb_collections() -> dict[str, Any]:
-    """Curated collections linked from the home page: fiction genres, national literatures, literary award lists and
-    the current best-seller tags. Ids and tags go to sb_browse(kind='genre' | 'nation' | 'award' | 'tag').
-    """
+    """Home-page genres, nations, award lists and tags; ids go to sb_browse(kind=...)."""
     root = parse_html(await http.html("/"))
     out: dict[str, list[dict[str, Any]]] = {"genres": [], "nations": [], "awards": [], "tags": []}
     seen: set[str] = set()

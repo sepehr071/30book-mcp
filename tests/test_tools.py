@@ -54,6 +54,18 @@ async def test_sb_reviews(client, site):
     assert out["reviews"][0]["author"] == "جواد عیدان" and out["reviews"][0]["date"] == "30 مرداد 1404"
 
 
+async def test_sb_book_blurb_and_reviews_full_text(client, site):
+    site.pages["/book/167515"] = fixture_text("book_167515.html")
+    plain = await call(client, "sb_book", {"book_id": 167515})
+    assert "review_text" not in plain and "stats" not in plain
+    full = await call(client, "sb_book", {"book_id": 167515, "include_blurb": True})
+    assert "review_text" in full and "stats" in full
+    clipped = await call(client, "sb_reviews", {"book_id": 167515})
+    whole = await call(client, "sb_reviews", {"book_id": 167515, "full_text": True})
+    assert all(len(r["text"] or "") <= 401 for r in clipped["reviews"])
+    assert sum(len(r["text"] or "") for r in whole["reviews"]) >= sum(len(r["text"] or "") for r in clipped["reviews"])
+
+
 async def test_book_not_found(client, site):
     result = await client.call_tool("sb_book", {"book_id": 9999999})
     assert result.is_error and "404" in result.content[0].text

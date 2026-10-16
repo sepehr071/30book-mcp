@@ -103,6 +103,13 @@ def path_quote(path: str) -> str:
     return quote(path, safe="/?=&%,:_-.~")
 
 
+def seg(s: str) -> str:
+    """Make free text safe as ONE path segment: no '/', '?', '&', '=', '#', '%' or '\\' and no '.' / '..'."""
+    if not s.strip("."):
+        raise ValueError("value must contain more than dots")
+    return re.sub(r"[/?#&=%\\]", lambda m: quote(m.group(), safe=""), s)
+
+
 # ---------------------------------------------------------------- book page
 
 

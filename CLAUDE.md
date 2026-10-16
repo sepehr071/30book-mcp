@@ -11,7 +11,10 @@ API map this server is built on (pages, circuit transport, quirks, test report):
 
 - `src/sibook_mcp/http.py`: the only HTTP code. One shared `httpx.AsyncClient` (`trust_env=False`, proxy only from
   `SIBOOK_MCP_PROXY`), `html(path)` for plain pages, `render(path, ready, type_into=)` for list pages (opens a Blazor
-  circuit, up to 3 attempts), `ApiError(ToolError)`, `set_transport()` for tests, `query()` builds `?a=1&b=True`.
+  circuit, up to 3 attempts, 0.5 s apart, 20 s ready timeout), `ApiError(ToolError)`, `set_transport()` for tests,
+  `query()` builds `?a=1&b=True`. `/book/<id>` HTML is cached 5 min (64 pages) so book -> similar -> reviews is one
+  fetch; every page is streamed with a 3 MB cap (`MAX_BODY`); a dropped connection is retried once after 0.5 s.
+  `server.py` strips pydantic `title` noise from the input schemas; `sb_reviews` clips review text to 400 chars.
 - `blazor.py`: the Blazor Server client (MessagePack + SignalR long polling + render-batch DOM). `dom.py`: tiny DOM and
   HTML parser. `parse.py`: cards, book page, reviews to dicts (Toman ints). `registry.py` / `server.py`: tool registry,
   `INSTRUCTIONS`.

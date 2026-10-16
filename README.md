@@ -72,7 +72,7 @@ All tools are read-only and prefixed `sb_`. Prices are Toman.
 |---|---|
 | `sb_bestsellers` | Site-wide best sellers |
 | `sb_new_releases` | Newest books |
-| `sb_deals` | The discounted-books page, biggest discount first on request |
+| `sb_deals` | Best sellers, optionally sorted by biggest discount |
 
 ## How it works
 

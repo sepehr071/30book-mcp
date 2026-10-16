@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -70,4 +71,13 @@ def site(monkeypatch):
 @pytest.fixture
 async def client():
     async with Client(mcp, raise_exceptions=True) as c:
+        call_tool = c.call_tool
+
+        async def checked(*args, **kwargs):
+            result = await call_tool(*args, **kwargs)
+            if not result.is_error:
+                result.structured_content = json.loads(result.content[0].text)
+            return result
+
+        c.call_tool = checked
         yield c

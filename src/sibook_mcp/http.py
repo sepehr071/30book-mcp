@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -36,6 +37,12 @@ _transport: httpx.AsyncBaseTransport | None = None
 _client: httpx.AsyncClient | None = None
 _limit: asyncio.Semaphore | None = None
 _circuits: asyncio.Semaphore | None = None
+_pages: dict[str, tuple[float, str]] = {}  # /book/<id> HTML for a few minutes: book -> similar -> reviews reuse it
+PAGE_TTL = 300
+PAGE_CACHE_MAX = 64
+MAX_BODY = 3_000_000  # bytes per page; the biggest real pages are well under 1 MB
+RETRY_DELAY = 0.5  # fixed pause before retrying an idempotent GET / circuit
+READY_TIMEOUT = 20  # slow circuits still draw a full list; a shorter wait drops results
 
 
 class ApiError(ToolError):
@@ -46,6 +53,7 @@ def set_transport(transport: httpx.AsyncBaseTransport | None) -> None:
     """Swap the transport (tests use httpx.MockTransport). Drops the current client."""
     global _transport, _client, _limit, _circuits
     _transport, _client, _limit, _circuits = transport, None, None, None
+    _pages.clear()
 
 
 def _get_client() -> tuple[httpx.AsyncClient, asyncio.Semaphore, asyncio.Semaphore]:
@@ -68,7 +76,15 @@ def _get_client() -> tuple[httpx.AsyncClient, asyncio.Semaphore, asyncio.Semapho
 
 async def html(path: str) -> str:
     """GET a server-rendered page (`/book/123`, `/`, `/landing/pod`) and return its HTML."""
-    return (await _send(SITE + path_quote(path))).text
+    hit = _pages.get(path)
+    if hit and time.monotonic() - hit[0] < PAGE_TTL:
+        return hit[1]
+    text = (await _send(SITE + path_quote(path))).text
+    if path.startswith("/book/"):
+        if len(_pages) >= PAGE_CACHE_MAX:
+            _pages.pop(next(iter(_pages)))
+        _pages[path] = (time.monotonic(), text)
+    return text
 
 
 async def render(
@@ -88,7 +104,7 @@ async def render(
     for attempt in (1, 2, 3):
         try:
             async with circuits, Circuit(client, SITE, href, page.text) as c:
-                trees = await c.wait(ready, timeout=20)
+                trees = await c.wait(ready, timeout=READY_TIMEOUT)
                 if type_into:
                     box_class, text, button_class = type_into
                     box = _first(trees, box_class)
@@ -102,6 +118,7 @@ async def render(
         except CircuitError as e:
             if attempt == 3:
                 raise ApiError(str(e)) from e
+            await asyncio.sleep(RETRY_DELAY)
     raise AssertionError("unreachable")
 
 
@@ -117,8 +134,20 @@ async def _send(url: str) -> httpx.Response:
     client, limit, _ = _get_client()
     for attempt in (1, 2):
         try:
-            async with limit:
-                r = await client.get(url)
+            async with limit, client.stream("GET", url) as resp:
+                body = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    body += chunk
+                    if len(body) > MAX_BODY:
+                        raise ApiError("30book.com sent an unexpectedly large page; giving up.")
+                # rebuild a plain Response: aiter_bytes already decoded the body, so drop the encoding headers
+                skip = {"content-encoding", "content-length", "transfer-encoding"}
+                r = httpx.Response(
+                    resp.status_code,
+                    headers=[(k, v) for k, v in resp.headers.items() if k.lower() not in skip],
+                    content=bytes(body),
+                    request=resp.request,
+                )
         except httpx.TimeoutException as e:
             raise ApiError("30book.com did not answer in time. Try again in a moment.") from e
         except httpx.TransportError as e:
@@ -127,6 +156,7 @@ async def _send(url: str) -> httpx.Response:
                     f"Could not reach 30book.com ({type(e).__name__}). Check the internet connection, "
                     "or set SIBOOK_MCP_PROXY."
                 ) from e
+            await asyncio.sleep(RETRY_DELAY)
             continue
         break
     if r.status_code >= 400:

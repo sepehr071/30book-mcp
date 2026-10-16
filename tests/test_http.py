@@ -1,10 +1,12 @@
+import json
 import re
 from pathlib import Path
 
 import httpx
 import pytest
+from conftest import fixture_text
 
-from sibook_mcp import http
+from sibook_mcp import http, parse
 
 pytestmark = pytest.mark.anyio
 
@@ -31,6 +33,28 @@ def test_query_builder():
 
 def _serve(handler):
     http.set_transport(httpx.MockTransport(handler))
+
+
+def test_seg_keeps_free_text_in_one_path_segment():
+    assert parse.seg("../login?x=1") == "..%2Flogin%3Fx%3D1"
+    assert parse.seg("a/b&c=d%e") == "a%2Fb%26c%3Dd%25e" and parse.seg("شازده کوچولو") == "شازده کوچولو"
+    with pytest.raises(ValueError):
+        parse.seg("..")
+
+
+async def test_book_pages_are_cached_but_other_pages_are_not():
+    n = []
+
+    def handler(request):
+        n.append(request.url.path)
+        return httpx.Response(200, text="<p>ok</p>")
+
+    _serve(handler)
+    await http.html("/book/7")
+    await http.html("/book/7")
+    await http.html("/")
+    await http.html("/")
+    assert n == ["/book/7", "/", "/"]
 
 
 async def test_html_get_quotes_persian_paths_and_follows_redirects():
@@ -105,3 +129,38 @@ async def test_browser_user_agent_and_no_env_proxy(client, monkeypatch):
     _serve(handler)
     result = await client.call_tool("sb_book", {"book_id": 5})
     assert not result.is_error and "Chrome" in seen[0]
+
+
+async def test_raw_client_gets_one_text_block_and_no_schemas():
+    from mcp import Client
+
+    from sibook_mcp.server import mcp
+
+    _serve(lambda request: httpx.Response(200, text="<html></html>"))
+    async with Client(mcp) as c:
+        tools = (await c.list_tools()).tools
+        assert all(t.output_schema is None for t in tools)
+        assert all("title" not in p for t in tools for p in t.input_schema["properties"].values())
+        result = await c.call_tool("sb_book", {"book_id": 5})
+        assert len(result.content) == 1 and result.content[0].type == "text"
+        assert result.structured_content is None
+
+
+def test_circuit_ready_wait_is_not_shortened():
+    assert http.READY_TIMEOUT >= 20  # a shorter wait loses results on slow circuits
+
+
+async def test_oversized_page_is_refused(monkeypatch):
+    monkeypatch.setattr(http, "MAX_BODY", 100)
+    _serve(lambda request: httpx.Response(200, text="x" * 1000))
+    with pytest.raises(http.ApiError, match="large"):
+        await http.html("/")
+
+
+async def test_reviews_text_is_clipped(client, site):
+    from sibook_mcp import product
+
+    site.pages["/book/167515"] = fixture_text("book_167515.html")
+    out = await client.call_tool("sb_reviews", {"book_id": 167515})
+    assert not out.is_error
+    assert all(len(r["text"] or "") <= product.REVIEW_CHARS + 1 for r in json.loads(out.content[0].text)["reviews"])
