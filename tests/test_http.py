@@ -1,5 +1,7 @@
+import asyncio
 import json
 import re
+import sys
 from pathlib import Path
 
 import httpx
@@ -106,7 +108,7 @@ async def test_network_error_after_retry(client):
     assert result.is_error and "Could not reach 30book.com (ConnectError)" in result.content[0].text
 
 
-async def test_timeout_is_not_retried(client):
+async def test_timeout_is_retried_then_reported(client):
     calls = []
 
     def slow(request):
@@ -115,20 +117,20 @@ async def test_timeout_is_not_retried(client):
 
     _serve(slow)
     result = await client.call_tool("sb_book", {"book_id": 5})
-    assert result.is_error and "did not answer in time" in result.content[0].text and len(calls) == 1
+    assert result.is_error and "did not answer in time" in result.content[0].text and len(calls) == 1 + http.MAX_RETRIES
 
 
-async def test_browser_user_agent_and_no_env_proxy(client, monkeypatch):
+async def test_persian_accept_language_and_no_env_proxy(client, monkeypatch):
     monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:1")  # must be ignored (trust_env=False)
     seen = []
 
     def handler(request):
-        seen.append(request.headers["User-Agent"])
+        seen.append(request.headers["Accept-Language"])
         return httpx.Response(200, text="<html></html>")
 
     _serve(handler)
     result = await client.call_tool("sb_book", {"book_id": 5})
-    assert not result.is_error and "Chrome" in seen[0]
+    assert not result.is_error and seen[0].startswith("fa-IR")
 
 
 async def test_raw_client_gets_one_text_block_and_no_schemas():
@@ -164,3 +166,131 @@ async def test_reviews_text_is_clipped(client, site):
     out = await client.call_tool("sb_reviews", {"book_id": 167515})
     assert not out.is_error
     assert all(len(r["text"] or "") <= product.REVIEW_CHARS + 1 for r in json.loads(out.content[0].text)["reviews"])
+
+
+def test_is_challenge():
+    html = {"content-type": "text/html"}
+    assert http._is_challenge(httpx.Response(403, text="<html>Just a moment...</html>", headers=html))
+    assert http._is_challenge(httpx.Response(503, text="<!doctype html><title>ArvanCloud</title>"))
+    assert not http._is_challenge(httpx.Response(403, text="<html>Access Denied ... Error code : 403</html>"))
+    assert not http._is_challenge(httpx.Response(403, json={"status": 403}))
+    assert not http._is_challenge(httpx.Response(200, text="<html></html>", headers=html))
+
+
+async def test_forbidden_is_never_retried():
+    calls = []
+
+    def blocked(request):
+        calls.append(1)
+        return httpx.Response(403, text="<html>nope</html>")
+
+    _serve(blocked)
+    with pytest.raises(http.ApiError, match="blocked") as e:
+        await http.html("/")
+    assert e.value.status == 403 and len(calls) == 1
+
+
+async def test_retry_after_is_honoured_and_capped(monkeypatch):
+    waits = []
+
+    async def fake_sleep(s):
+        waits.append(s)
+
+    monkeypatch.setattr(http.asyncio, "sleep", fake_sleep)
+    hits = []
+
+    def limited(request):
+        hits.append(1)
+        if len(hits) == 1:
+            return httpx.Response(429, headers={"Retry-After": "3"})
+        if len(hits) == 2:
+            return httpx.Response(503, headers={"Retry-After": "999"})
+        return httpx.Response(200, text="<p>ok</p>")
+
+    _serve(limited)
+    assert await http.html("/") == "<p>ok</p>"
+    assert len(hits) == 3 and [w for w in waits if w] == [3, http.MAX_RETRY_WAIT]
+
+
+async def test_proxy_list_rotates_on_connect_error(monkeypatch):
+    monkeypatch.setenv("SIBOOK_MCP_PROXY", "http://p1:1, http://p2:2")
+    assert http._proxies() == ["http://p1:1", "http://p2:2"]
+
+    def boom(request):
+        raise httpx.ConnectError("down", request=request)
+
+    _serve(boom)
+    http._get_client()
+    with pytest.raises(http.ApiError):
+        await http.html("/")
+    assert http._proxy_index >= 1
+    monkeypatch.setenv("SIBOOK_MCP_PROXY", "http://p1:1")
+    old = http._proxy_index
+    http._get_client()
+    with pytest.raises(http.ApiError):
+        await http.html("/")
+    assert http._proxy_index == old and http._client is not None  # a single proxy never rotates
+
+
+async def test_stale_client_does_not_rotate(monkeypatch):
+    monkeypatch.setenv("SIBOOK_MCP_PROXY", "http://p1:1, http://p2:2")
+    old, _, _ = http._get_client()
+    http._next_proxy(old)
+    new, _, _ = http._get_client()
+    assert http._proxy_index == 1 and new is not old
+    http._next_proxy(old)  # a late failure on the retired client must not skip the proxy now in use
+    assert http._proxy_index == 1 and http._client is new
+
+
+async def test_challenge_cleared_by_browser_once(monkeypatch):
+    runs = []
+
+    async def fake_browser(proxy):
+        runs.append(proxy)
+        await asyncio.sleep(0.01)
+        return [{"name": "clearance", "value": "ok", "domain": ".30book.com", "path": "/"}]
+
+    monkeypatch.setattr(http, "_browser_cookies", fake_browser)
+
+    def guarded(request):
+        if request.headers.get("cookie", "").find("clearance=ok") < 0:
+            return httpx.Response(403, text="<html>Just a moment</html>", headers={"content-type": "text/html"})
+        return httpx.Response(200, text="<p>ok</p>")
+
+    _serve(guarded)
+    await asyncio.gather(http.html("/a"), http.html("/b"))
+    assert len(runs) == 1  # the second caller reused the cookies the first one fetched
+
+    _serve(lambda r: httpx.Response(403, text="<html>Just a moment</html>"))
+    with pytest.raises(http.ApiError) as e:  # still blocked after the one retry: final
+        await http.html("/c")
+    assert e.value.status == 403
+
+
+async def test_challenge_without_patchright(monkeypatch):
+    monkeypatch.setitem(sys.modules, "patchright.async_api", None)  # makes the import fail
+    _serve(lambda r: httpx.Response(403, text="<html>Just a moment</html>"))
+    with pytest.raises(http.ApiError, match=r"30book-mcp\[browser\].*patchright install chromium"):
+        await http.html("/")
+
+
+async def test_blazor_calls_are_xhr_pages_are_navigations():
+    class Spy(http._ChromeTransport):
+        def __init__(self):
+            pass
+
+    from httpx_curl_cffi import AsyncCurlTransport
+
+    def fake(self, req):
+        return {"headers": req.headers.raw}
+
+    t = Spy()
+    orig = AsyncCurlTransport._create_request_params
+    AsyncCurlTransport._create_request_params = fake
+    try:
+        nav = t._create_request_params(httpx.Request("GET", "https://www.30book.com/book/1"))["headers"]
+        xhr = t._create_request_params(httpx.Request("POST", "https://www.30book.com/_blazor/negotiate"))["headers"]
+    finally:
+        AsyncCurlTransport._create_request_params = orig
+    assert (b"sec-fetch-user", None) not in nav and (b"sec-fetch-user", None) in xhr
+    assert any(k.lower() == b"origin" for k, _ in xhr) and not any(k.lower() == b"origin" for k, _ in nav)

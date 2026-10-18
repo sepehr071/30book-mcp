@@ -9,11 +9,16 @@ API map this server is built on (pages, circuit transport, quirks, test report):
 
 ## Layout
 
-- `src/sibook_mcp/http.py`: the only HTTP code. One shared `httpx.AsyncClient` (`trust_env=False`, proxy only from
-  `SIBOOK_MCP_PROXY`), `html(path)` for plain pages, `render(path, ready, type_into=)` for list pages (opens a Blazor
+- `src/sibook_mcp/http.py`: the only HTTP code. One shared `httpx.AsyncClient` (`trust_env=False`) on an
+  `httpx-curl-cffi` Chrome-impersonating transport (TLS, HTTP/2, UA and sec-ch-ua headers come from the profile, none
+  are hand-written; navigation-only headers are dropped, `Accept-Language` is fa-IR). Proxy only from
+  `SIBOOK_MCP_PROXY`, a comma list used one at a time (next after a block or connect error). Max 2 requests at once,
+  150-600 ms jitter before each uncached call. `html(path)` for plain pages, `render(path, ready, type_into=)` for list pages (opens a Blazor
   circuit, up to 3 attempts, 0.5 s apart, 20 s ready timeout), `ApiError(ToolError)`, `set_transport()` for tests,
   `query()` builds `?a=1&b=True`. `/book/<id>` HTML is cached 5 min (64 pages) so book -> similar -> reviews is one
-  fetch; every page is streamed with a 3 MB cap (`MAX_BODY`); a dropped connection is retried once after 0.5 s.
+  fetch; every page is streamed with a 3 MB cap (`MAX_BODY`); timeouts, network errors, 429 and 5xx are retried up to 2
+  times (Retry-After honoured, else exponential backoff with jitter, capped 10 s), 403 never. A bot-check page
+  (`_is_challenge`) is cleared once with patchright when the `browser` extra is installed, else `ApiError` says how.
   `server.py` strips pydantic `title` noise from the input schemas; `sb_reviews` clips review text to 400 chars.
 - `blazor.py`: the Blazor Server client (MessagePack + SignalR long polling + render-batch DOM). `dom.py`: tiny DOM and
   HTML parser. `parse.py`: cards, book page, reviews to dicts (Toman ints). `registry.py` / `server.py`: tool registry,
@@ -32,8 +37,8 @@ uv needs the local proxy to download packages; the server and tests call 30book 
 export HTTPS_PROXY=http://127.0.0.1:10898 HTTP_PROXY=http://127.0.0.1:10898
 uv sync
 uv run ruff check . && uv run ruff format --check .
-uv run pytest -q            # offline
-uv run pytest -m live -q    # real site
+uv run python -m pytest -q            # offline (`uv run pytest` hits a uv trampoline error here)
+uv run python -m pytest -m live -q    # real site
 uv build
 ```
 
@@ -50,7 +55,8 @@ Git Bash mangles `/path` arguments: prefix with `MSYS_NO_PATHCONV=1` when passin
 - New tool: `@tool("Title")` async function, every param `Annotated[..., Field(...)]` with constraints and an example,
   docstring = what it returns + when to use + what to call next, compact dict output. Add a unit test on a real trimmed
   fixture, a live test, a README tool-table row (a test checks the tables) and an `INSTRUCTIONS` mention.
-- Deps stay `mcp` + `httpx`. Write ZWNJ as `‌`, never the invisible character. Keep `Field(pattern=...)` small.
+- Deps stay `mcp` + `httpx` + `httpx-curl-cffi` / `curl-cffi`; the only extra is `browser = patchright==1.63.0`
+  (install `30book-mcp[browser]`, then `patchright install chromium`). Write ZWNJ as `‌`, never the invisible character. Keep `Field(pattern=...)` small.
 
 ## 30book quirks (keep them)
 

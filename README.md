@@ -14,7 +14,7 @@ discounts. No account, no API key, no login, no cart.
 - **What:** MCP server for 30book (30book.com), an Iranian online bookstore. Search terms work best in Persian (titles, names); prices in Toman.
 - **Install:** `uvx 30book-mcp` (needs [uv](https://docs.astral.sh/uv/getting-started/installation/), Python 3.10+; or `pip install 30book-mcp`). Transport: stdio.
 - **Claude Code:** `claude mcp add 30book -- uvx 30book-mcp`
-- **Auth:** none. Optional `SIBOOK_MCP_PROXY` (HTTP proxy URL for requests to 30book.com).
+- **Auth:** none. Optional `SIBOOK_MCP_PROXY` (HTTP proxy URL, or a comma-separated list, for requests to 30book.com).
 - **Access:** read-only. It never logs in and has no cart, checkout, wishlist or review-writing tools.
 - **Tools:** 14, prefixed `sb_*`. Start with `sb_search`, `sb_book`, `sb_bestsellers`, `sb_deals`, `sb_browse`.
 - **Typical sequence:** `sb_search` -> `sb_book` -> `sb_similar` or `sb_reviews`; for one person or publisher, `sb_find_person` / `sb_find_publisher` -> `sb_author` / `sb_publisher`.
@@ -39,7 +39,8 @@ claude mcp add 30book -- uvx 30book-mcp
 ```
 
 Other clients (Claude Desktop, Cursor, VS Code): run the command `uvx` with argument `30book-mcp`.
-Behind a proxy, set `SIBOOK_MCP_PROXY=http://host:port` (system proxy variables are ignored on purpose).
+Behind a proxy, set `SIBOOK_MCP_PROXY=http://host:port` (system proxy variables are ignored on purpose). A comma-separated list is used one proxy at a time, moving on after a block or connect error.
+Requests use a Chrome TLS/HTTP2 fingerprint. If the site ever serves a bot-check page, install the optional browser extra (`30book-mcp[browser]`, then `patchright install chromium`) to clear it once.
 
 ## Tools
 
@@ -90,8 +91,8 @@ All tools are read-only and prefixed `sb_`. Prices are Toman.
 export HTTPS_PROXY=http://127.0.0.1:10898 HTTP_PROXY=http://127.0.0.1:10898   # uv downloads only
 uv sync
 uv run ruff check . && uv run ruff format --check .
-uv run pytest -q            # offline, recorded pages
-uv run pytest -m live -q    # real site, one test per tool
+uv run python -m pytest -q            # offline, recorded pages
+uv run python -m pytest -m live -q    # real site, one test per tool
 ```
 
 API map and test report: `../30book/`.
