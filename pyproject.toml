@@ -35,6 +35,7 @@ Homepage = "https://github.com/sepehr071/30book-mcp"
 Source = "https://github.com/sepehr071/30book-mcp"
 Changelog = "https://github.com/sepehr071/30book-mcp/releases"
 Issues = "https://github.com/sepehr071/30book-mcp/issues"
+Website = "https://mcpfarsi.ir/servers/30book/"
 
 [project.scripts]
 30book-mcp = "sibook_mcp.server:main"

@@ -11,6 +11,7 @@ search by title, compare editions and publishers, see list and discounted prices
 [![CI](https://github.com/sepehr071/30book-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/sepehr071/30book-mcp/actions/workflows/ci.yml)
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.sepehr071%2F30book--mcp-7c3aed)](https://registry.modelcontextprotocol.io/?q=30book-mcp)
 [![License: MIT](https://img.shields.io/badge/license-MIT-16a34a)](https://github.com/sepehr071/30book-mcp/blob/main/LICENSE)
+[![mcpfarsi](https://mcpfarsi.ir/badge/30book.svg)](https://mcpfarsi.ir/servers/30book/)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_30book--mcp-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=30book&config=%7B%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%2230book-mcp%22%5D%7D)
 
 [For AI agents](#for-ai-agents) · [Why](#why) · [What it can do](#what-it-can-do) · [Quick start](#quick-start) · [Tools](#tools) · [How it works](#how-it-works) · [Good to know](#good-to-know) · [FAQ](#faq) · [Configuration](#configuration) · [فارسی](#فارسی) · [Development](#development) · [Related servers](#related-servers) · [Disclaimer](#disclaimer) · [License](#license)
@@ -362,6 +363,7 @@ publishes to PyPI and the [MCP Registry](https://registry.modelcontextprotocol.i
 - [Shopino MCP server](https://github.com/sepehr071/shopino-mcp) for another Iranian online shop
 - [Digikala MCP server](https://github.com/sepehr071/digikala-mcp) for Iran's largest online store
 - [iran-mcp](https://github.com/sepehr071/iran-mcp): catalog of all Iranian-service MCP servers
+- Listed on [mcpfarsi.ir](https://mcpfarsi.ir/servers/30book/), the Persian MCP marketplace
 
 ## Disclaimer
 
