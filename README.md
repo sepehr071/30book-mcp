@@ -174,7 +174,7 @@ All 14 tools are read-only and prefixed `sb_`. Prices are Toman. Pass book, publ
 | Tool | What it does |
 |---|---|
 | `sb_book` | Price, final price, discount %, stock, authors, translators, publisher, pages, cover, size, ISBN, language, edition (print number), year (Shamsi), weight, categories, rating, tags, description |
-| `sb_similar` | Similar books, more by the author, more by the translator |
+| `sb_similar` | Similar books, more by the author, more by the translator (a list is empty when the site only shows best sellers) |
 | `sb_reviews` | Reader comments with stars, plus the rating summary |
 </details>
 
