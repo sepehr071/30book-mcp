@@ -1,5 +1,10 @@
+import re
+
 import pytest
 from conftest import fixture_text
+
+from sibook_mcp import parse
+from sibook_mcp.dom import parse_html
 
 pytestmark = pytest.mark.anyio
 
@@ -41,16 +46,29 @@ async def test_sb_book_translated_and_sold_out(client, site):
 
 async def test_sb_similar(client, site):
     site.pages["/book/167515"] = fixture_text("book_167515.html")
+    site.lists["/best-sellers"] = fixture_text("list_search.html")
     out = await call(client, "sb_similar", {"book_id": 167515})
-    assert set(out) == {"similar", "same_author"}
+    assert set(out) == {"similar", "same_author"} and out["same_author"]
     first = out["similar"][0]
     assert first["id"] and first["final_price"] and first["url"].startswith("https://www.30book.com/book/")
+
+
+async def test_sb_similar_drops_bestseller_fallback(client, site):
+    site.pages["/book/6426"] = fixture_text("book_6426_translated.html")
+    ids = [c["id"] for c in parse.book_lists(parse_html(site.pages["/book/6426"]))["از این نویسنده"]]
+    html = fixture_text("list_search.html")
+    for old, new in zip(re.findall(r'href="/book/(\d+)/', html), ids, strict=False):
+        html = html.replace(f"/book/{old}/", f"/book/{new}/")
+    site.lists["/best-sellers"] = html
+    out = await call(client, "sb_similar", {"book_id": 6426})
+    assert out["same_author"] == [] and out["same_translator"] == [] and out["similar"]
 
 
 async def test_sb_reviews(client, site):
     site.pages["/book/167515"] = fixture_text("book_167515.html")
     out = await call(client, "sb_reviews", {"book_id": 167515})
     assert out["review_count"] == 5 and out["reviews"][0]["stars"] == 5
+    assert len({r["author"] for r in out["reviews"]}) == len(out["reviews"])  # desktop + mobile copies merged
     assert out["reviews"][0]["author"] == "جواد عیدان" and out["reviews"][0]["date"] == "30 مرداد 1404"
 
 

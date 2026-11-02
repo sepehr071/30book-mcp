@@ -9,6 +9,7 @@ from urllib.parse import unquote
 from pydantic import Field
 
 from . import http, parse
+from .catalog import listing
 from .dom import Node, parse_html
 from .registry import tool
 
@@ -60,7 +61,15 @@ async def sb_similar(book_id: BookId) -> dict[str, Any]:
     """
     lists = parse.book_lists(await _page(book_id))
     names = {"شاید بپسندید": "similar", "از این نویسنده": "same_author", "از این مترجم": "same_translator"}
-    return {names.get(k, k): v for k, v in lists.items()}
+    out = {names.get(k, k): v for k, v in lists.items()}
+    mine = [k for k in ("same_author", "same_translator") if out.get(k)]
+    if mine:
+        # With nothing of its own to show, the page fills these carousels with the site's best sellers.
+        best = {b["id"] for b in (await listing("/best-sellers", {}, 1))["books"]}
+        for k in mine:
+            if best and len(best & {b["id"] for b in out[k]}) * 2 >= len(best):
+                out[k] = []
+    return out
 
 
 @tool("Reader reviews of a book")

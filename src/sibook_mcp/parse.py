@@ -234,18 +234,17 @@ def book_lists(root: Node) -> dict[str, list[dict[str, Any]]]:
 
 
 def reviews(root: Node) -> list[dict[str, Any]]:
-    out = []
+    out: dict[tuple, dict[str, Any]] = {}  # the page holds a desktop and a mobile copy of each review
     for r in root.find_all(cls="product-comment-list-item-container"):
         stars = len([i for i in r.find_all("i") if "ri-star-s-fill" in i.classes() and "yellow" in i.classes()])
         likes = [d.text() for d in r.find_all(cls="product-question-answer-like")]
-        out.append(
-            {
-                "author": _txt(r.find(cls="product-comment-list-item-title")),
-                "date": _txt(r.find(cls="product-comment-list-item-date")),
-                "stars": stars,
-                "text": _txt(r.find(cls="product-comment-list-item-text")),
-                "likes": num(likes[0]) if likes else 0,
-                "dislikes": num(likes[1]) if len(likes) > 1 else 0,
-            }
-        )
-    return out
+        item = {
+            "author": _txt(r.find(cls="product-comment-list-item-title")),
+            "date": _txt(r.find(cls="product-comment-list-item-date")),
+            "stars": stars,
+            "text": _txt(r.find(cls="product-comment-list-item-text")),
+            "likes": num(likes[0]) if likes else 0,
+            "dislikes": num(likes[1]) if len(likes) > 1 else 0,
+        }
+        out.setdefault((item["author"], item["date"], item["text"]), item)
+    return list(out.values())
