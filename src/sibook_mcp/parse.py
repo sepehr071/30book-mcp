@@ -45,6 +45,11 @@ def book_href(href: str) -> tuple[int, str] | None:
     return (int(m.group(1)), m.group(2) or "") if m else None
 
 
+def lean(d: dict[str, Any]) -> dict[str, Any]:
+    """Drop null, empty and zero values (False is kept: in_stock)."""
+    return {k: v for k, v in d.items() if v is not None and v != "" and v != [] and (v or v is False)}
+
+
 def card(n: Node) -> dict[str, Any] | None:
     """One book card (`.product-list-item-container`): list, search and carousel cards share this markup."""
     a = n.find("a")
@@ -56,17 +61,19 @@ def card(n: Node) -> dict[str, Any] | None:
     if final is None:  # no discount: the single price is shown as the final one, or nothing when unavailable
         list_price = None
     price = list_price or final
-    return {
-        "id": ref[0],
-        "title": _txt(n.find(cls="product-list-item-name")),
-        "publisher": _txt(n.find(cls="product-list-item-producer")),
-        "price": price,
-        "final_price": final,
-        "discount_pct": discount_pct(price, final),
-        "in_stock": final is not None,
-        "image": _img(n),
-        "url": f"{SITE}/book/{ref[0]}",
-    }
+    return lean(
+        {
+            "id": ref[0],
+            "title": _txt(n.find(cls="product-list-item-name")),
+            "publisher": _txt(n.find(cls="product-list-item-producer")),
+            "price": price,
+            "final_price": final,
+            "discount_pct": discount_pct(price, final),
+            "in_stock": final is not None,
+            "image": _img(n),
+            "url": f"{SITE}/book/{ref[0]}",
+        }
+    )
 
 
 def cards(root: Node, search_only: bool = False) -> list[dict[str, Any]]:

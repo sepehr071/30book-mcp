@@ -66,18 +66,14 @@ async def sb_search(
     extended: Annotated[bool, Field(description="Match words, not the exact phrase (more results).")] = False,
     sort: Sort = None,
     available_only: Avail = False,
-    publisher_id: Annotated[
-        int | None, Field(ge=1, description="Only this publisher (id from sb_find_publisher or a book's publisher.id).")
-    ] = None,
-    author_id: Annotated[
-        int | None, Field(ge=1, description="Only this author (id from sb_find_person or a book's authors[].id).")
-    ] = None,
-    translator_id: Annotated[int | None, Field(ge=1, description="Only this translator (person id).")] = None,
+    publisher_id: Annotated[int | None, Field(ge=1, description="Publisher id (sb_find_publisher).")] = None,
+    author_id: Annotated[int | None, Field(ge=1, description="Author id (sb_find_person).")] = None,
+    translator_id: Annotated[int | None, Field(ge=1, description="Translator id.")] = None,
     page: Page = 1,
 ) -> dict[str, Any]:
-    """Search books by title: price, final_price, discount_pct, in_stock, publisher, id.
+    """Search books by title.
 
-    Use first for any book question. Editions of one title are separate books: compare final_price. Next: sb_book(id).
+    Use first for any book question. Editions are separate books: compare final_price. Next: sb_book.
     """
     params = _filters(sort, available_only, publisher_id, wtr=author_id, inp=translator_id, stp=extended)
     return await listing(f"/search/{parse.seg(query)}", params, page)
@@ -94,7 +90,7 @@ async def sb_browse(
         Field(
             min_length=1,
             max_length=100,
-            description="category: code like 'bta-1-1' (sb_categories, sb_book); genre / nation / award: id from sb_collections; tag: text, e.g. 'کتاب_های_پرفروش_1404'.",
+            description="category: code like 'bta-1-1' (sb_categories); genre / nation / award: id from sb_collections; tag: text, e.g. 'کتاب_های_پرفروش_1404'.",
         ),
     ],
     sort: Sort = None,
@@ -102,9 +98,9 @@ async def sb_browse(
     publisher_id: Annotated[int | None, Field(ge=1, description="Only this publisher.")] = None,
     page: Page = 1,
 ) -> dict[str, Any]:
-    """Books of a category (bta-N-M or btf-N-M-K; bts-N sections are landing pages only), genre, nation, award list or tag.
+    """Books of a category (bta-N-M or btf-N-M-K), genre, nation, award list or tag.
 
-    Use to browse a topic instead of a keyword. Award pages ignore sort / filters and add carousel books (about 22 per page).
+    Use to browse a topic instead of a keyword. bts-N sections are not listable. Award pages ignore sort / filters.
     """
     loose = False
     if kind == "category":
@@ -133,9 +129,7 @@ async def sb_browse(
 async def sb_publisher(
     publisher_id: Annotated[
         int,
-        Field(
-            ge=1, description="Publisher id (sb_find_publisher, or publisher.id in sb_book). Example 1 = صدای معاصر."
-        ),
+        Field(ge=1, description="Publisher id (sb_find_publisher), e.g. 1."),
     ],
     sort: Sort = None,
     available_only: Avail = False,
@@ -149,9 +143,7 @@ async def sb_publisher(
 async def sb_author(
     person_id: Annotated[
         int,
-        Field(
-            ge=1, description="Person id (sb_find_person, or authors[].id / translators[].id in sb_book). Example 6073."
-        ),
+        Field(ge=1, description="Person id (sb_find_person), e.g. 6073."),
     ],
     sort: Sort = None,
     available_only: Avail = False,
@@ -229,7 +221,7 @@ def _ancestors(n: Node):
 @tool("Find a publisher by name")
 async def sb_find_publisher(
     name: Annotated[
-        str, Field(min_length=2, max_length=60, description="Part of the publisher name, Persian, e.g. 'قطره' or 'نی'.")
+        str, Field(min_length=2, max_length=60, description="Part of the publisher name, Persian, e.g. 'قطره'.")
     ],
 ) -> dict[str, Any]:
     """Look up publisher ids by name. Pass the id to sb_search(publisher_id=...) or sb_publisher."""
@@ -238,11 +230,10 @@ async def sb_find_publisher(
 
 @tool("Find an author or translator by name")
 async def sb_find_person(
-    name: Annotated[
-        str, Field(min_length=2, max_length=60, description="Part of a person's name, Persian, e.g. 'آلبر' or 'کامو'.")
-    ],
+    name: Annotated[str, Field(min_length=2, max_length=60, description="Part of a name, Persian, e.g. 'کامو'.")],
 ) -> dict[str, Any]:
-    """Look up author / translator ids by name. Pass the id to sb_author or sb_search(author_id=...). The box matches
-    name fragments and can miss some people: if nothing matches, search a book and read its authors[].id.
+    """Look up author / translator ids by name.
+
+    Pass the id to sb_author or sb_search(author_id=...). Misses some people: then read authors[].id from sb_book.
     """
     return await _find("/person", "person", name)

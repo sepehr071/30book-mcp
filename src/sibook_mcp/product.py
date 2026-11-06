@@ -35,14 +35,12 @@ async def _page(book_id: int) -> Node:
 @tool("Book details")
 async def sb_book(
     book_id: BookId,
-    max_chars: Annotated[int, Field(ge=0, le=20000, description="Cut the description here (0 = no cut).")] = 600,
+    max_chars: Annotated[int, Field(ge=0, le=20000, description="Cut description here (0 = no cut).")] = 600,
     include_blurb: Annotated[bool, Field(description="Also return review_text (blurb) and stats.")] = False,
 ) -> dict[str, Any]:
-    """One book: authors, translators, publisher, price, final_price, discount_pct, in_stock, ISBN, pages, cover, size,
-    language, edition, year (Shamsi), weight, categories (codes for sb_browse), rating, tags, description (cut to
-    max_chars, default 600; 0 = no cut). review_text and stats only with include_blurb=true.
+    """One book: authors, translators, publisher, prices, stock, ISBN, details, categories (codes for sb_browse), rating, tags, description.
 
-    Use after sb_search to compare editions and get author / publisher ids. Next: sb_similar, sb_reviews.
+    Use after sb_search for details and author / publisher ids. review_text and stats only with include_blurb. Next: sb_similar, sb_reviews.
     """
     b = parse.book(await _page(book_id), book_id)
     if not include_blurb:
@@ -50,15 +48,12 @@ async def sb_book(
         b.pop("stats", None)
     if max_chars:
         b["description"] = _clip(b["description"], max_chars)
-    return b
+    return parse.lean(b)
 
 
 @tool("Similar books and more by the author")
 async def sb_similar(book_id: BookId) -> dict[str, Any]:
-    """Similar books, more by the author and (translations) by the translator, up to 20 each.
-
-    For other editions of the same title use sb_search.
-    """
+    """Similar books, more by the author and by the translator, up to 20 each. Other editions: use sb_search."""
     lists = parse.book_lists(await _page(book_id))
     names = {"شاید بپسندید": "similar", "از این نویسنده": "same_author", "از این مترجم": "same_translator"}
     out = {names.get(k, k): v for k, v in lists.items()}
@@ -75,11 +70,9 @@ async def sb_similar(book_id: BookId) -> dict[str, Any]:
 @tool("Reader reviews of a book")
 async def sb_reviews(
     book_id: BookId,
-    full_text: Annotated[bool, Field(description="Return whole review texts instead of 400 chars.")] = False,
+    full_text: Annotated[bool, Field(description="Whole texts instead of 400 chars.")] = False,
 ) -> dict[str, Any]:
-    """Reader comments (author, date, stars, text cut to 400 chars unless full_text, likes) and the rating summary;
-    only the first comments on the page are available.
-    """
+    """Reader comments and the rating summary; only the first comments on the page are available."""
     root = await _page(book_id)
     b = parse.book(root, book_id)
     return {
@@ -99,9 +92,7 @@ async def sb_categories(
         str | None, Field(pattern=r"^bts-\d+$", description="Section code such as 'bts-1'. Omit to list the sections.")
     ] = None,
 ) -> dict[str, Any]:
-    """Category sections (کتاب عمومی, ...) or, for one section, its subjects (تاریخ, ...). Codes go to
-    sb_browse(kind='category'); finer btf-... topics are in sb_book categories.
-    """
+    """Category sections or, for one section, its subjects. Codes go to sb_browse(kind='category')."""
     if section is None:
         root = parse_html(await http.html("/"))
         refs: dict[str, str] = {}

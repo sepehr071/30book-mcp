@@ -24,7 +24,7 @@ async def test_sb_book_discounted(client, site):
     assert b["title"] == "دو قرن سکوت"
     assert (b["price"], b["final_price"], b["discount_pct"], b["in_stock"]) == (700000, 525000, 25, True)
     assert b["authors"] == [{"id": 6073, "name": "عبدالنبی قیم"}]
-    assert b["translators"] == [] and b["publisher"] == {"id": 1, "name": "صدای معاصر"}
+    assert "translators" not in b and b["publisher"] == {"id": 1, "name": "صدای معاصر"}
     assert (b["isbn"], b["pages"], b["cover"], b["size"], b["edition"], b["year_shamsi"], b["weight_g"]) == (
         "9786229255872", 300, "گالینگور", "وزیری", 1, 1403, 600,
     )  # fmt: skip
@@ -41,7 +41,7 @@ async def test_sb_book_translated_and_sold_out(client, site):
     assert t["publisher"]["id"] == 511 and t["edition"] == 22
     s = await call(client, "sb_book", {"book_id": 103736})
     # sold out: no price on the page; the JSON-LD offer (Rial 217500) gives 21,750 Toman
-    assert s["in_stock"] is False and s["final_price"] == 21750 and s["discount_pct"] == 0
+    assert s["in_stock"] is False and s["final_price"] == 21750 and "discount_pct" not in s
 
 
 async def test_sb_similar(client, site):
