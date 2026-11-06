@@ -1,6 +1,6 @@
 [project]
 name = "30book-mcp"
-version = "0.3.3"
+version = "0.4.0"
 description = "Unofficial read-only MCP server for 30book (30book.com): search Iranian printed books, compare editions and publishers, prices in Toman, discounts, authors and bestsellers."
 readme = "README.md"
 license = "MIT"
