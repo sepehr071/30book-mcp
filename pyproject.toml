@@ -1,9 +1,9 @@
 [project]
 name = "30book-mcp"
-version = "0.4.0"
+version = "0.4.1"
 description = "Unofficial read-only MCP server for 30book (30book.com): search Iranian printed books, compare editions and publishers, prices in Toman, discounts, authors and bestsellers."
 readme = "README.md"
-license = "MIT"
+license = "PolyForm-Noncommercial-1.0.0"
 license-files = ["LICENSE"]
 authors = [{ name = "Sepehr Radmard", email = "sepehrr80@gmail.com" }]
 requires-python = ">=3.10"
