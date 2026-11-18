@@ -34,8 +34,7 @@ search by title, compare editions and publishers, see list and discounted prices
 
 ## Why
 
-30book has no public API and its list pages are drawn by a live Blazor Server session, so a plain scraper sees empty
-pages. This server speaks that protocol (SignalR long polling, no browser needed) and parses the book pages, so an
+This server reads 30book's catalogue and book pages, so an
 agent can answer "cheapest edition of Little Prince with a hard cover", "everything by this translator under
 300,000 Toman" or "what are the best sellers in history" in a few calls.
 
@@ -243,7 +242,7 @@ It is free and needs no key. It calls 30book.com directly; if that host is unrea
 <details>
 <summary><b>What if the site shows a bot-check page?</b></summary>
 
-Requests use a Chrome TLS/HTTP2 fingerprint. If the site still serves a bot-check page, install the optional browser
+If the site serves a bot-check page, install the optional browser
 extra (`pip install "30book-mcp[browser]"`, then `patchright install chromium`) to clear it once.
 </details>
 
