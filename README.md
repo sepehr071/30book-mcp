@@ -14,7 +14,7 @@ search by title, compare editions and publishers, see list and discounted prices
 [![mcpfarsi](https://mcpfarsi.ir/badge/30book.svg)](https://mcpfarsi.ir/servers/30book/)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_30book--mcp-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=30book&config=%7B%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%2230book-mcp%22%5D%7D)
 
-[For AI agents](#for-ai-agents) · [Why](#why) · [What it can do](#what-it-can-do) · [Quick start](#quick-start) · [Tools](#tools) · [How it works](#how-it-works) · [Good to know](#good-to-know) · [FAQ](#faq) · [Configuration](#configuration) · [فارسی](#فارسی) · [Development](#development) · [Related servers](#related-servers) · [Disclaimer](#disclaimer) · [License](#license)
+[For AI agents](#for-ai-agents) · [Why](#why) · [What it can do](#what-it-can-do) · [Quick start](#quick-start) · [Tools](#tools) · [Good to know](#good-to-know) · [FAQ](#faq) · [Configuration](#configuration) · [فارسی](#فارسی) · [Development](#development) · [Related servers](#related-servers) · [Disclaimer](#disclaimer) · [License](#license)
 
 ---
 
@@ -189,26 +189,6 @@ All 14 tools are read-only and prefixed `sb_`. Prices are Toman. Pass book, publ
 </details>
 
 All tools are annotated `readOnlyHint: true` and return compact JSON.
-
-## How it works
-
-```text
-  AI agent  (Claude, Cursor, Copilot, ...)
-      │
-      │  MCP over stdio
-      ▼
-  30book-mcp  (runs on your machine)
-      │
-      │  HTTPS (Chrome TLS/HTTP2 fingerprint) + SignalR long polling
-      └──────▶  30book.com   book pages, Blazor-drawn list pages
-```
-
-- Book pages, the home page and landing pages are plain server-rendered HTML and are parsed directly.
-- Search, category, publisher, author, genre and tag pages are built after load by a Blazor Server circuit. The server
-  opens one over SignalR long polling, applies the binary render batches to a small DOM and reads the
-  cards. Paging, sort and filters are URL query parameters, so no clicks are simulated; only the name boxes on the
-  publisher and author index pages use a fired event.
-- It runs on your machine and calls 30book directly; there is no hosted server in between.
 
 ## Good to know
 
